@@ -12,7 +12,7 @@
 
 This RFC proposes the addition of generic types and functions to PHP.
 
-Generics enable developers to create a whole family of declarations using a single generic declaration - for example, a generic collection-type declaration ''Collection<T>'' induces a declaration for any entity-type ''T'', which negates the need to implement a dedicated collection-type for every entity-type, reducing the need for boilerplate code and duplication.
+Generics enable developers to create a whole family of declarations using a single generic declaration - for example, a parameterized collection-type ''Collection<T>'' induces a declaration for a type-parameter ''T'', which negates the need to implement a dedicated collection-type for every entity-type, reducing the need for boilerplate code and duplication.
 
 Generic type relationships are already possible in PHP, as it is in most dynamic languages - but such type relationships presently cannot be declared or checked, and, at this time, can't even be documented, e.g. using php-doc tags.
 
@@ -22,25 +22,35 @@ Note that generic versions of the standard (SPL) collection types in PHP is curr
 
 Also note that, while the syntax proposed by this specification may be similar to that of Hack/HHVM, compatibility with Hack is not a stated objective.
 
+===== Terminology =====
+
+This RFC uses the following terminology.
+
+In a declaration such as ''class Dictionary<Key, Value> {}'', we refer to the type ''Dictionary'' as a "parameterized type", and to ''Key'' and ''Value'' as "type parameters".
+
+In a declaration such as ''$d = new Dictionary<string, int>()'', we refer to ''string'' and ''int'' as "type arguments", and to the type of ''$d'' as the "reified type".
+
+In a declaration such as ''function foo(A $a): B {}'', we refer to ''A'' and ''B'' as "type declarations".
+
 ===== Proposal =====
 
 This RFC proposes the addition of generic classes, interfaces and traits - all of which will be referred to as generic "types" in the following. It also proposes the addition of generic functions and methods.
 
 The proposed syntax and feature set references various generic features of gradually-typed languages such as Dart and TypeScript, as well as statically-typed languages like C# and Java, in an attempt to create something that looks and feels familiar to those with generics experience from other languages.
 
-==== Generic Types ====
+==== Parameterized Types ====
 
-A type (class/trait/interface) declaration is considered generic when the declaration includes one or more type parameter aliases, enclosed in angle brackets, immediately following the type-name.
+A parameterized type (class/trait/interface) declaration includes one or more type parameters, enclosed in angle brackets, immediately following the type-name.
 
-A type parameter alias may optionally include an upper bound, e.g. a supertype of permitted type arguments for a given type parameter, which may be indicated by the use of the word ''is'' and a type-hint following the alias.
+A type parameter may optionally include an upper bound, e.g. a supertype of permitted type arguments for a given type parameter, which may be indicated by the use of the word ''is'' and a type-hint following the alias.
 
-A type parameter may include a default type-hint, which will be applied in the absence of a given type-hint, indicated by an ''='' sign folled by a type-hint, at the end of the type parameter.
+A type parameter may include a default type-argument, indicated by an ''='' sign folled by a valid, default type-declaration. The default type-argument is used in the absence of a type argument - it is reified and reflected, same as a given type-argument.
 
-Within the scope of a given generic type declaration, a type alias may be used in place of an actual type hint, in any instance method declaration or expression body - this includes instance method return-types, and various common expressions in the body of an instance method, including the ''new'' statement and references to static members.
+Within the scope of a parameterized type declaration, a type parameter may be used in a type-declarations, in any instance method declaration or expression body - this includes instance method return-types, and various common expressions in the body of an instance method, including the ''new'' statement, the ''::class'' constant, the ''instanceof'' operator, and references to static members.
 
-The use of class-level type aliases in a static method declaration (or static method body) are not permitted, since there is no calling context (''$this'') and therefore no way to resolve the type aliases. (Type arguments in static methods are allowed, and function the same as type arguments in functions.)
+Referencing a type-parameter in a static method declaration (or static method body) is not permitted, since there is no instance context (''$this'') and therefore no reified type arguments. (Static methods may declare their own type parameters, the same as type parameters in other function-declarations.)
 
-The following demonstrates the proposed syntax for a generic class:
+The following demonstrates the proposed syntax for a parameterized class:
 
 <code php>
 class Entry<KeyType, ValueType>
@@ -66,9 +76,9 @@ class Entry<KeyType, ValueType>
 }
 </code>
 
-Note the use of type parameters in the class declaration ''Entry<KeyType, ValueType>'' where two type aliases are defined.
+The class declaration ''Entry<KeyType, ValueType>'' in this example includes two type parameters, ''KeyType'' and ''ValueType''.
 
-Also note the use of type aliases used for type-hinting the constructor arguments, and the return-types of the ''getKey()'' and ''getValue()'' methods - the run-time type-checks performed will vary with the actual type-arguments.
+Note the use of type parameters being referenced in the type-declarations of the constructor arguments, as well as the return-type declarations of the ''getKey()'' and ''getValue()'' methods - the run-time type-checks performed will vary with the reified type-arguments.
 
 An instance of a generic class can be constructed using explicit type arguments:
 
@@ -82,9 +92,9 @@ The type arguments, in this example, may also be inferred from the given argumen
 $entry = new Entry(1, 'test');
 </code>
 
-In this case, the type of the given arguments are used to automatically complete the type-arguments - this is only possible because the constructor includes a type-hint for every type parameter, and because both constructor arguments are non-null values, from which a type can be inferred.
+In this case, the type arguments are inferred and reified prior to execution of the constructor body. (Note that inference from ''null'' values is not permitted.)
 
-In either case, note that neither the type parameters, not the type argument names, are part of the class name:
+Note that type arguments are internally reified, and can be accessed via reflection, but are not a part of the type-name:
 
 <code php>
 var_dump(get_class($entry)); // => (string) "Entry"
@@ -92,20 +102,20 @@ var_dump(get_class($entry)); // => (string) "Entry"
 
 Also note that this means you can't have both a class ''C'' and a class ''C<T>'' in the same namespace - unlike some statically-linked languages, the type parameters aren't actually part of the class-name.
 
-=== Extending a Generic Type ===
+=== Extending a Parameterized Type ===
 
-A class that extends a generic class can choose to complete the type arguments:
+A type that extends a parameterized type may provide type argument declarations:
 
 <code php>
 class StringEntry extends Entry<int,string>
 {}
 </code>
 
-This class is not itself generic (e.g. doesn't have any type parameters) although it extends a generic class.
+The resulting class in this example is not parameterized, although it extends a parameterized class.
 
-=== Type-hinting and Type-checking Generic Types ===
+=== Type-checking of Parameterized Types ===
 
-Functions and methods are able to type-hint against specific variations of a given class - for example:
+Function/method-declarations may include parameterized type-declarations - for example:
 
 <code php>
 function write(Entry<int, string> $entry)
@@ -117,7 +127,7 @@ write(new Entry<int, string>(1, 'test'));
 write(new Entry<int, int>(1, 2)); // throws a TypeError
 </code>
 
-In the second example, the ''ValueType'' is incorrect, which results in a ''TypeError''.
+In the second example, the ''ValueType'' argument is ''int'', which is incompatible with the ''string'' type-argument used in the function declaration, and results in a ''TypeError''.
 
 === Nested Type Arguments ===
 
@@ -153,7 +163,7 @@ In the second example, the ''ValueType'' is incorrect just as before, which agai
 
 === Upper Bounds ===
 
-The kind of type argument that may be given for a type parameter, can be constrained by using the ''is'' keyword to specify an upper bound for the type - for example:
+The kind of type argument permitted for a given type parameter may be constrained, by using the ''is'' keyword to specify an upper bound for the type - for example:
 
 <code php>
 interface Boxable
@@ -172,18 +182,18 @@ class Hat implements Boxable
 }
 
 $box = new Box<Hat>(); // ok
-$box = new Box<string>(); // throws a 
+$box = new Box<string>(); // throws a TypeError
 </code>
 
-In the second example, a ''TypeError'' is thrown, because ''string'' is not a sub-type of ''Boxable''.
+In the second example, a ''TypeError'' is thrown, because ''string'' violates the upper bound ''T is Boxable''.
 
-Any valid PHP type-hint may be used as an upper bound, including simple types like ''int'', ''float'', ''bool'', ''string'' and ''object''. (Omission of an upper bound effectively means ''mixed'' in general PHP terms, though we are not proposing the ability to explicitly type-hint as ''mixed'', which isn't supported by PHP.)
+Any valid type-declaration may be used as an upper bound, including built-in types like ''int'', ''float'', ''bool'', ''string'' and ''object''. (Omission of an upper bound effectively means ''mixed'' in general PHP terms, though we are not proposing the ability to explicitly type-hint as ''mixed'', which isn't supported by PHP.)
 
 Note that the choice of the keyword ''is'' to indicate upper bounds is based on the rejection of perhaps more obvious alternatives - repurposing the ''extends'' or ''implements'' keywords would be misleading, since they would work precisely the same way; worse, permitting both keywords would render consumer code invalid if an upper bound type provided by a library is refactored between class and interface. Repurposing ''instanceof'' would also be misleading, since the upper bound is checking the type-hint, not an instance. Furthermore, we don't want this to collide with possible future mixed scalar types, such as ''number'' or ''scalar'', neither of which make sense in conjunction with either ''extends'' or ''implements''. (If a reserved ''is'' keyword is undesirable for other reasons, a simple '':'' is likely a better alternative than overloading the meaning of an existing keyword.)
 
 == Bounds Checking ==
 
-Checking for upper bounds is consistent with type-checking in PHP - for example:
+Checking of upper bounds is consistent with type-checking in PHP - for example:
 
 <code php>
 interface Machine {}
@@ -199,17 +209,26 @@ class ComputerBuilder<T is Computer> extends MachineBuilder<Computer> {} // (A)
 class SuperComputerBuilder extends ComputerBuilder<SuperComputer> {} // (B)
 </code>
 
-In example (A) the ''Computer'' type-hint in ''MachineBuilder<Computer>'' is checked against the ''is Machine'' bound in the parent ''MachineBuilder<T>'' generic class, and passes, because ''Computer'' implements ''Machine''.
+In example (A) the type-argument ''Computer'' in ''MachineBuilder<Computer>'' is checked against the ''is Machine'' bound in the parameterized parent class ''MachineBuilder<T>'', and is found to be valid, because ''Computer'' implements ''Machine''.
 
-In example (B) the ''SuperComputer'' type-hint in ''ComputerBuilder<SuperComputer>'' is checking against the ''is Computer'' bound in the parent ''ComputerBuilder<T>'' class, and passes, because ''SuperComputer'' extends ''Computer''.
+In example (B) the type-argument ''SuperComputer'' in ''ComputerBuilder<SuperComputer>'' is checked against the ''is Computer'' bound in the parameterized parent class ''ComputerBuilder<T>'', and is found to be valid, because ''SuperComputer'' extends ''Computer''.
 
 In other words, bounds are checked according to the same type-checking rules as objects being checked with ''instanceof'' - though it is important to note that upper bound checks are performed at the time when the declaration is loaded/parsed, ahead of any instance existing.
 
 === Traits ===
 
-Generic traits can be declared - for example:
+Parameterized traits can be declared - for example:
 
 <code php>
+interface Drink {}
+interface Flavor {}
+
+class Tea implements Drink {}
+class Coffee implements Drink {}
+
+class Sugar implements Flavor {}
+class Milk implements Flavor {}
+
 trait Factory<D is Drink, F is Flavor>
 {
     public function make(F $flavor) : D {
@@ -234,7 +253,7 @@ $maker->makeCoffee(new Milk(1));
 
 Type arguments must be supplied via the ''use'' clause.
 
-Note that the type argument passed to a trait could itself be a type alias declared by the parent class - for example:
+Note that a type argument passed to a trait may reference a type parameter declared by the parent class - for example:
 
 <code php>
 trait Container<T>
@@ -262,9 +281,9 @@ $box->set(new Hat());
 var_dump($box->get()); // => Hat#2
 </code>
 
-==== Generic Functions and Methods ====
+==== Parameterized Functions and Methods ====
 
-Generic functions require a type-argument for the invokation itself - for example:
+Parameterized functions require a type-argument for the invokation itself - for example:
 
 <code php>
 declare(strict_types=1)
@@ -288,17 +307,17 @@ $box = create_box(new Hat());
 $box = create_box<string>(new Hat()); // throws TypeError
 </code>
 
-The first example is able to infer the type argument ''T'' as ''Hat'', because the type alias was used to type-hint the argument given for the ''$content'' parameter.
+In the first example, the type-argument ''T'' is inferred as ''Hat'', because the type parameter ''T'' was referenced in the type-declaration of the ''$content'' parameter.
 
 The second example results in a ''TypeError'', because the type parameter ''T'' was explicitly defined as ''string''. (Note that, if we had not used ''declare(strict_types=1)'', and if ''Box'' had implemented ''<nowiki>__toString()</nowiki>'', this would have been acceptable, due to the default behavior of weak scalar type-checking.)
 
-Note the addition of ''func_type_args()'', which returns a list of type-hints pertaining to the current generic function call or constructor invocation. This complements ''func_get_args()'' by providing the list of type-arguments as fully-qualified class-names.
+Note the addition of ''func_type_args()'', which returns a list of type-arguments pertaining to the current generic function call or constructor invocation. This complements ''func_get_args()'' by providing the list of type-arguments as fully-qualified class-names.
 
-=== Generic Methods ===
+=== Parameterized Methods ===
 
-Generic methods are subject to the same rules and behavior as generic functions, see above.
+Parameterized methods are subject to the same rules and behavior as parameterized functions, see above.
 
-When overridden, generic methods must have the same number of type parameters as that of their superclass, with the same upper bounds - for example:
+When overridden, parameterized methods must have type parameter declarations identical to those declared by the super-class - for example:
 
 <code php>
 interface Greetable
@@ -310,7 +329,7 @@ class Greeter
 {
     public function greet<T is Greetable>(T $subject)
     {
-        $subject = $object->getName();
+        $name = $subject->getName();
         
         return "Hello, {$name}!";
     }
@@ -325,33 +344,17 @@ class AdvancedGreeter extends Greeter
 }
 </code>
 
-Note that the type parameter alias ''T'' is the only thing that may change in a sub-class - the number and upper bounds must match.
+Note that the type parameter ''T'' is the only thing that may change in a sub-class - the number and upper bounds must match.
 
 The same applies when overriding constructors and static methods.
 
-==== Generic Constructors ====
-
-Constructors may accept arbitrary type-arguments, just like any other method, e.g.:
-
-<code php>
-class Hello<T1>
-{
-    public function __construct<T1,T2>()
-    {
-        // ...
-    }
-}
-</code>
-
-In other words, the constructor may accept more type-arguments than those affecting the type.
-
 ==== Generic Closures ====
 
-TODO describe ''callable<T, ...>'' type-hints and/or generic ''Closure<T, ...>'' and/or ''Function<T, ...>'' types
+TODO describe ''callable<T, ...>'' type-hints and/or parameterized ''Closure<T, ...>'' and/or ''Function<T, ...>'' types
 
 ==== Type Checking ====
 
-Run-time type checks can be performed with the ''instanceof'' operator, either with or without type-arguments - for example:
+Type-checks can be performed at run-time with the ''instanceof'' operator, either with or without type-arguments - for example:
 
 <code php>
 class Box<T> {}
@@ -375,7 +378,7 @@ var_dump($cat_box instanceof Box<Feline>); // => (bool) true
 var_dump($hat_box instanceof Box<HeadGear>); // => (bool) true
 </code>
 
-Note that using an unbounded generic type-check works as expected - a type check against a generic type, without specifying type arguments, checks the base type but ignores the type arguments.
+Note that type-checks against a parameterized type with no type-arguments (and no defaults) will check the base type only - any reified types will not be checked.
 
 As demonstrated by the last two examples, type-checking also works on abstract types - that is, an instance of ''Box<Cat>'' is an instance of ''Box<Feline>'' because ''Cat'' implements ''Feline''; and likewise, ''Box<Hat>'' is an instance of ''Box<HeadGear>'' because ''Hat'' extends ''HeadGear''. (Consistent with the inability to type-check against traits, trait-names cannot be used as part of a type-check.)
 
@@ -397,13 +400,13 @@ This may relate to the [[https://wiki.php.net/rfc/union_types|union types RFC]] 
 
 ==== Autoloading ====
 
-When autoloading is triggered e.g. by a ''new'' statement with a generic type, autoloading is triggered as normal, with only the class-name (without type parameters) being supplied.
+When autoloading is triggered e.g. by a ''new'' statement with a parameterized type, autoloading is triggered as normal, with only the class-name (without type parameters) being supplied.
 
 In other words, a statement like ''new Map<int,string>()'' will trigger auto-loading of class ''Map''.
 
 ==== Reflection ====
 
-Type parameters, as well as type arguments given for type parameters, are made available via reflection.
+Type parameters, as well as reified type arguments, are available via reflection.
 
 This RFC calls for the following changes and additions to the reflection API:
 
@@ -411,9 +414,9 @@ TODO (some [[https://gist.github.com/mindplay-dk/dc3d24eba8d13a650cc6|notes]] wi
 
 === Reification ===
 
-Note that, because PHP is a reflective language, type arguments are fully [[https://en.wikipedia.org/wiki/Reification_(computer_science)#Reification_and_reflective_programming_languages|reified]] - which means they actually exist (in memory) at run-time.
+Because PHP is a reflective language, type arguments are fully [[https://en.wikipedia.org/wiki/Reification_(computer_science)#Reification_and_reflective_programming_languages|reified]] - which means they actually exist (in memory) at run-time.
 
-This differs from generics in Hack, where type-hints are [[https://github.com/facebook/hhvm/issues/5317|not reified]] and are unavailable at run-time. Type erasure would be inconsistent with the existing PHP type system, where any available type-information and declared type-hints are always available at run-time via reflection.
+This differs from generics in Hack, where type-hints are [[https://github.com/facebook/hhvm/issues/5317|not reified]] and are unavailable at run-time. Type erasure would be inconsistent with the existing PHP type system, where any type-declaration is generally available at run-time via reflection.
 
 ==== Related Enhancements ====
 
