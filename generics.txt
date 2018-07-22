@@ -217,39 +217,50 @@ In other words, bounds are checked according to the same type-checking rules as 
 
 === Traits ===
 
-Parameterized traits can be declared - for example:
+Traits can have type parameters:
 
-<code php>
-interface Drink {}
-interface Flavor {}
+<PHP>trait OuterIteratorDecorator<K, V> {
+    abstract function getInnerIterator(): Iterator<K,V>;
 
-class Tea implements Drink {}
-class Coffee implements Drink {}
+    function rewind(): void {
+        $this->getInnerIterator()->rewind();
+    }
+    
+    function valid(): bool {
+        return (bool) $this->getInnerIterator()->valid();
+    }
+    
+    function key(): K {
+        return $this->getInnerIterator()->key();
+    }
+    
+    function current(): V {
+        return $this->getInnerIterator()->current();
+    }
 
-class Sugar implements Flavor {}
-class Milk implements Flavor {}
-
-trait Factory<D is Drink, F is Flavor>
-{
-    public function make(F $flavor) : D {
-        return new D();
+    function next(): void {
+        $this->getInnerIterator()->next();
     }
 }
 
-class Maker
-{
-    use Factory<Tea, Sugar> {
-        make as makeTea;
+class MappingIterator<K, From, To> implements Iterator<K, From> {
+    use OuterIteratorDecorator<K, From>;
+    
+    private $fn, $inner;
+    function __construct(callable $fn, Iterator<K, From> $it) {
+        $this->fn = $fn;
+        $this->inner = $it;
     }
-    use Factory<Coffee, Milk> {
-        make as makeCoffee;
+
+    private function getInnerIterator(): Iterator<K, From> {
+        return $this->inner;
+    }
+
+    function current(): To {
+        return ($this->fn)($this->current());
     }
 }
-
-$maker = new Maker();
-$maker->makeTea(new Sugar(4));
-$maker->makeCoffee(new Milk(1));
-</code>
+</PHP>
 
 Type arguments must be supplied via the ''use'' clause.
 
